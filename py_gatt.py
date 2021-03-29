@@ -12,6 +12,11 @@ class AnyDeviceDFU(gatt.Device):
     UUID_PACKET = "00001532-1212-efde-1523-785feabcd123"
     UUID_VERSION = "00001534-1212-efde-1523-785feabcd123"
 
+    def __init__(self, mac_address, manager, verbose):
+        self.target_mac = mac_address
+        self.verbose = verbose
+        super().__init__(mac_address, manager)
+
     def connect_succeeded(self):
         super().connect_succeeded()
         print("[%s] Connected" % (self.mac_address))
@@ -25,20 +30,24 @@ class AnyDeviceDFU(gatt.Device):
         print("[%s] Disconnected" % (self.mac_address))
 
     def services_resolved(self):
-        super().services_resol
+        super().services_resolved()
 
         print("[%s] Resolved services" % (self.mac_address))
-        ble_dfu_serv = next(
-            s for s in self.services if s.uuid == self.UUID_DFU_SERVICE
-        )
+        ble_dfu_serv = next(s for s in self.services if s.uuid == self.UUID_DFU_SERVICE)
         ctrl_point_char = next(
             c for c in ble_dfu_serv.characteristics if c.uuid == self.UUID_CTRL_POINT
         )
         packet_char = next(
             c for c in ble_dfu_serv.characteristics if c.uuid == self.UUID_PACKET
         )
+
+        # Subscribe to notifications from Control Point characteristic
+        if self.verbose:
+            print("Enabling notifications")
+        ctrl_point_char.enable_notifications()
+
         # Write "Start DFU" (0x01) to DFU Control Point
-        # Write the image size to DFU Packet 
+        # Write the image size to DFU Packet
         # <Length of SoftDevice><Length of bootloader><Length of application>
         # lengths must be in uint32
 
