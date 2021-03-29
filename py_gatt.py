@@ -3,7 +3,27 @@ import gatt
 import os
 from gi.repository import GObject, Gio, GLib
 from util import *
+import struct
+import datetime
 
+def get_current_time():
+    now = datetime.datetime.now()
+
+    # https://www.bluetooth.com/wp-content/uploads/Sitecore-Media-Library/Gatt/Xml/Characteristics/org.bluetooth.characteristic.current_time.xml
+    return bytearray(
+        struct.pack(
+            "HBBBBBBBB",
+            now.year,
+            now.month,
+            now.day,
+            now.hour,
+            now.minute,
+            now.second,
+            now.weekday() + 1,  # numbered 1-7
+            int(now.microsecond / 1e6 * 256),  # 1/256th of a second
+            0b0001,  # adjust reason
+        )
+    )
 
 class AnyDeviceDFU(gatt.Device):
     # Class constants
@@ -29,6 +49,10 @@ class AnyDeviceDFU(gatt.Device):
         super().disconnect_succeeded()
         print("[%s] Disconnected" % (self.mac_address))
 
+    def characteristic_enable_notifications_succeeded(self, characteristic):
+        if self.verbose:
+            print("Notification Enable succeeded for characteristic:", characteristic.uuid)
+    
     def services_resolved(self):
         super().services_resolved()
 
@@ -41,10 +65,26 @@ class AnyDeviceDFU(gatt.Device):
             c for c in ble_dfu_serv.characteristics if c.uuid == self.UUID_PACKET
         )
 
+        time_serv = next(
+            s for s in self.services if s.uuid == "00001805-0000-1000-8000-00805f9b34fb"
+        )
+        time_char = next(
+            c
+            for c in time_serv.characteristics
+            if c.uuid == "00002a2b-0000-1000-8000-00805f9b34fb"
+        )
+
         # Subscribe to notifications from Control Point characteristic
         if self.verbose:
             print("Enabling notifications")
         ctrl_point_char.enable_notifications()
+        #time_char.enable_notifications()
+
+        # Send 'START DFU' + Application Command
+        if self.verbose:
+            print("Sending START_DFU")
+        #time_char.write_value(get_current_time())
+        ctrl_point_char.write_value(bytearray.fromhex("01"))
 
         # Write "Start DFU" (0x01) to DFU Control Point
         # Write the image size to DFU Packet
