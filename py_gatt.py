@@ -40,7 +40,6 @@ class AnyDeviceDFU(gatt.Device):
         self.datfile_path = datfile_path
         self.target_mac = mac_address
         self.verbose = verbose
-        self.notification_enabled = False
         super().__init__(mac_address, manager)
 
     def input_setup(self):
@@ -82,9 +81,7 @@ class AnyDeviceDFU(gatt.Device):
 
     def characteristic_enable_notifications_succeeded(self, characteristic):
         if self.verbose and characteristic.uuid == self.UUID_CTRL_POINT:
-            print(
-                "Notification Enable succeeded for Control Point Characteristic"
-            )         
+            print("Notification Enable succeeded for Control Point Characteristic")
             self.start()
 
     def characteristic_write_value_succeeded(self, characteristic):
@@ -131,7 +128,7 @@ class AnyDeviceDFU(gatt.Device):
         # Write the image size to DFU Packet
         # <Length of SoftDevice><Length of bootloader><Length of application>
         # lengths must be in uint32
-        #hex_size_array_lsb = uint32_to_bytes_le(len(self.bin_array))
+        # hex_size_array_lsb = uint32_to_bytes_le(len(self.bin_array))
 
 
 class InfiniTimeManager(gatt.DeviceManager):
