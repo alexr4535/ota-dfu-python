@@ -26,6 +26,8 @@ class AnyDeviceDFU(gatt.Device):
 
     def services_resolved(self):
         super().services_resol
+
+        print("[%s] Resolved services" % (self.mac_address))
         ble_dfu_serv = next(
             s for s in self.services if s.uuid == self.UUID_DFU_SERVICE
         )
