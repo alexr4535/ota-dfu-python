@@ -5,6 +5,7 @@ from gi.repository import GObject, Gio, GLib
 from util import *
 import struct
 import datetime
+import time
 
 
 def get_current_time():
@@ -39,12 +40,11 @@ class AnyDeviceDFU(gatt.Device):
         self.datfile_path = datfile_path
         self.target_mac = mac_address
         self.verbose = verbose
+        self.notification_enabled = False
         super().__init__(mac_address, manager)
 
-    # --------------------------------------------------------------------------
-    #    Bin: read binfile into bin_array
-    # --------------------------------------------------------------------------
     def input_setup(self):
+        """Bin: read binfile into bin_array"""
         print(
             "preparing "
             + os.path.split(self.firmware_path)[1]
@@ -81,10 +81,11 @@ class AnyDeviceDFU(gatt.Device):
         print("[%s] Disconnected" % (self.mac_address))
 
     def characteristic_enable_notifications_succeeded(self, characteristic):
-        if self.verbose:
+        if self.verbose and characteristic.uuid == self.UUID_CTRL_POINT:
             print(
-                "Notification Enable succeeded for characteristic:", characteristic.uuid
-            )
+                "Notification Enable succeeded for Control Point Characteristic"
+            )         
+            self.start()
 
     def characteristic_write_value_succeeded(self, characteristic):
         if self.verbose:
@@ -106,34 +107,23 @@ class AnyDeviceDFU(gatt.Device):
 
         print("[%s] Resolved services" % (self.mac_address))
         ble_dfu_serv = next(s for s in self.services if s.uuid == self.UUID_DFU_SERVICE)
-        ctrl_point_char = next(
+        self.ctrl_point_char = next(
             c for c in ble_dfu_serv.characteristics if c.uuid == self.UUID_CTRL_POINT
         )
-        packet_char = next(
+        self.packet_char = next(
             c for c in ble_dfu_serv.characteristics if c.uuid == self.UUID_PACKET
-        )
-
-        time_serv = next(
-            s for s in self.services if s.uuid == "00001805-0000-1000-8000-00805f9b34fb"
-        )
-        time_char = next(
-            c
-            for c in time_serv.characteristics
-            if c.uuid == "00002a2b-0000-1000-8000-00805f9b34fb"
         )
 
         # Subscribe to notifications from Control Point characteristic
         if self.verbose:
             print("Enabling notifications")
-        ctrl_point_char.enable_notifications()
-        # time_char.enable_notifications()
+        self.ctrl_point_char.enable_notifications()
 
-        # Send 'START DFU' + Application Command
+    def start(self):
         # Write "Start DFU" (0x01) to DFU Control Point
         if self.verbose:
             print("Sending START_DFU")
-        time_char.write_value(get_current_time())
-        # ctrl_point_char.write_value(bytearray.fromhex("01"))
+        self.ctrl_point_char.write_value(bytearray(1))
 
         # Transmit binary image size
         # Need to pad the byte array with eight zero bytes
@@ -141,7 +131,7 @@ class AnyDeviceDFU(gatt.Device):
         # Write the image size to DFU Packet
         # <Length of SoftDevice><Length of bootloader><Length of application>
         # lengths must be in uint32
-        hex_size_array_lsb = uint32_to_bytes_le(len(self.bin_array))
+        #hex_size_array_lsb = uint32_to_bytes_le(len(self.bin_array))
 
 
 class InfiniTimeManager(gatt.DeviceManager):
