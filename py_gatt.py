@@ -40,6 +40,7 @@ class AnyDeviceDFU(gatt.Device):
         self.datfile_path = datfile_path
         self.target_mac = mac_address
         self.verbose = verbose
+        self.current_step = 0
         super().__init__(mac_address, manager)
 
     def input_setup(self):
@@ -86,23 +87,35 @@ class AnyDeviceDFU(gatt.Device):
 
     def characteristic_write_value_succeeded(self, characteristic):
         if self.verbose and characteristic.uuid == self.UUID_CTRL_POINT:
-            print("Characteristic value was written successfully for Control Point Characteristic")
+            print(
+                "Characteristic value was written successfully for Control Point Characteristic"
+            )
+        if self.current_step == 1:
             self.step_two()
 
+        if self.current_step == 3:
+            self.step_four()
+
         if self.verbose and characteristic.uuid == self.UUID_PACKET:
-            print("Characteristic value was written successfully for Packet Characteristic")
+            print(
+                "Characteristic value was written successfully for Packet Characteristic"
+            )
 
     def characteristic_value_updated(self, characteristic, value):
         if self.verbose:
             if characteristic.uuid == self.UUID_CTRL_POINT:
                 print(
-                "Characteristic value was updated for Control Point Characteristic"
+                    "Characteristic value was updated for Control Point Characteristic"
                 )
             if characteristic.uuid == self.UUID_PACKET:
-                print(
-                "Characteristic value was updated for Packet Characteristic"
-            )
+                print("Characteristic value was updated for Packet Characteristic")
             print("New value is:", value)
+
+        if array_to_hex_string(value)[2:-2] == "01":
+            self.step_three()
+
+        if array_to_hex_string(value)[2:-2] == "02":
+            self.step_five()
 
     def services_resolved(self):
         super().services_resolved()
@@ -116,24 +129,68 @@ class AnyDeviceDFU(gatt.Device):
             c for c in ble_dfu_serv.characteristics if c.uuid == self.UUID_PACKET
         )
 
-        # Subscribe to notifications from Control Point characteristic
         if self.verbose:
-            print("Enabling notifications Control Point")
+            print("Enabling notifications for Control Point Characteristic")
         self.ctrl_point_char.enable_notifications()
 
     def step_one(self):
-        # Write ("Start DFU" (0x01), "Application" (0x04)) to DFU Control Point
+        self.current_step = 1
         if self.verbose:
-            print("Sending START_DFU")
+            print(
+                "Sending ('Start DFU' (0x01), 'Application' (0x04)) to DFU Control Point"
+            )
         self.ctrl_point_char.write_value(bytearray.fromhex("01 04"))
 
     def step_two(self):
+        self.current_step = 2
         if self.verbose:
             print("Sending Image size to the DFU Packet characteristic")
         x = len(self.bin_array)
         hex_size_array_lsb = uint32_to_bytes_le(x)
         zero_pad_array_le(hex_size_array_lsb, 8)
         self.packet_char.write_value(bytearray(hex_size_array_lsb))
+        print("Waiting for Image Size notification")
+
+    def step_three(self):
+        self.current_step = 3
+        if self.verbose:
+            print("Sending 'INIT DFU' + Init Packet Command")
+        self.ctrl_point_char.write_value(bytearray.fromhex("02 00"))
+
+    def step_four(self):
+        self.current_step = 4
+        if self.verbose:
+            print("Sending the Init image (DAT)")
+        self.packet_char.write_value(bytearray(self.get_init_bin_array()))
+        if self.verbose:
+            print("Send 'INIT DFU' + Init Packet Complete Command")
+        self.ctrl_point_char.write_value(bytearray.fromhex("02 01"))
+        print("Waiting for INIT DFU notification")
+
+    def step_five(self):
+        # Set the Packet Receipt Notification interval to 10
+        if self.verbose:
+            print("Setting pkt receipt notification interval")
+        prn = uint16_to_bytes_le(10)
+        x = bytearray(
+            struct.pack(
+                "HB",
+                prn,
+                "08"
+            )
+        )
+        self.ctrl_point_char.write_value(x)
+        self.step_six()
+
+    def step_six(self):
+        pass
+
+    
+
+    def get_init_bin_array(self):
+        # Open the DAT file and create array of its contents
+        init_bin_array = array("B", open(self.datfile_path, "rb").read())
+        return init_bin_array
 
 
 class InfiniTimeManager(gatt.DeviceManager):
