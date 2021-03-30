@@ -94,9 +94,13 @@ class AnyDeviceDFU(gatt.Device):
 
     def characteristic_value_updated(self, characteristic, value):
         if self.verbose:
-            print(
-                "Characteristic value was updated for characteristic:",
-                characteristic.uuid,
+            if characteristic.uuid == self.UUID_CTRL_POINT:
+                print(
+                "Characteristic value was updated for Control Point Characteristic"
+                )
+            if characteristic.uuid == self.UUID_PACKET:
+                print(
+                "Characteristic value was updated for Packet Characteristic"
             )
             print("New value is:", value)
 
@@ -118,10 +122,10 @@ class AnyDeviceDFU(gatt.Device):
         self.ctrl_point_char.enable_notifications()
 
     def step_one(self):
-        # Write "Start DFU" (0x01) to DFU Control Point
+        # Write ("Start DFU" (0x01), "Application" (0x04)) to DFU Control Point
         if self.verbose:
             print("Sending START_DFU")
-        self.ctrl_point_char.write_value(bytearray(1))
+        self.ctrl_point_char.write_value(bytearray.fromhex("01 04"))
 
     def step_two(self):
         if self.verbose:
