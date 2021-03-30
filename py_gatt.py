@@ -82,14 +82,15 @@ class AnyDeviceDFU(gatt.Device):
     def characteristic_enable_notifications_succeeded(self, characteristic):
         if self.verbose and characteristic.uuid == self.UUID_CTRL_POINT:
             print("Notification Enable succeeded for Control Point Characteristic")
-            self.start()
+            self.step_one()
 
     def characteristic_write_value_succeeded(self, characteristic):
-        if self.verbose:
-            print(
-                "Characteristic value was written successfully for characteristic:",
-                characteristic.uuid,
-            )
+        if self.verbose and characteristic.uuid == self.UUID_CTRL_POINT:
+            print("Characteristic value was written successfully for Control Point Characteristic")
+            self.step_two()
+
+        if self.verbose and characteristic.uuid == self.UUID_PACKET:
+            print("Characteristic value was written successfully for Packet Characteristic")
 
     def characteristic_value_updated(self, characteristic, value):
         if self.verbose:
@@ -113,22 +114,22 @@ class AnyDeviceDFU(gatt.Device):
 
         # Subscribe to notifications from Control Point characteristic
         if self.verbose:
-            print("Enabling notifications")
+            print("Enabling notifications Control Point")
         self.ctrl_point_char.enable_notifications()
 
-    def start(self):
+    def step_one(self):
         # Write "Start DFU" (0x01) to DFU Control Point
         if self.verbose:
             print("Sending START_DFU")
         self.ctrl_point_char.write_value(bytearray(1))
 
-        # Transmit binary image size
-        # Need to pad the byte array with eight zero bytes
-        # (because that's what the bootloader is expecting...)
-        # Write the image size to DFU Packet
-        # <Length of SoftDevice><Length of bootloader><Length of application>
-        # lengths must be in uint32
-        # hex_size_array_lsb = uint32_to_bytes_le(len(self.bin_array))
+    def step_two(self):
+        if self.verbose:
+            print("Sending Image size to the DFU Packet characteristic")
+        x = len(self.bin_array)
+        hex_size_array_lsb = uint32_to_bytes_le(x)
+        zero_pad_array_le(hex_size_array_lsb, 8)
+        self.packet_char.write_value(bytearray(hex_size_array_lsb))
 
 
 class InfiniTimeManager(gatt.DeviceManager):
