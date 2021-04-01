@@ -96,6 +96,12 @@ class AnyDeviceDFU(gatt.Device):
         if self.current_step == 3:
             self.step_four()
 
+        if self.current_step == 5:
+            self.step_six()
+
+        if self.current_step == 6:
+            self.step_seven()
+
         if self.verbose and characteristic.uuid == self.UUID_PACKET:
             print(
                 "Characteristic value was written successfully for Packet Characteristic"
@@ -109,13 +115,16 @@ class AnyDeviceDFU(gatt.Device):
                 )
             if characteristic.uuid == self.UUID_PACKET:
                 print("Characteristic value was updated for Packet Characteristic")
-            print("New value is:", value)
+        print("New value is:", value)
 
         if array_to_hex_string(value)[2:-2] == "01":
             self.step_three()
 
         if array_to_hex_string(value)[2:-2] == "02":
             self.step_five()
+
+        if array_to_hex_string(value)[2:-2] == "03":
+            self.step_seven()
 
     def services_resolved(self):
         super().services_resolved()
@@ -168,24 +177,19 @@ class AnyDeviceDFU(gatt.Device):
         print("Waiting for INIT DFU notification")
 
     def step_five(self):
+        self.current_step = 5
         # Set the Packet Receipt Notification interval to 10
         if self.verbose:
             print("Setting pkt receipt notification interval")
-        prn = uint16_to_bytes_le(10)
-        x = bytearray(
-            struct.pack(
-                "HB",
-                prn,
-                "08"
-            )
-        )
-        self.ctrl_point_char.write_value(x)
-        self.step_six()
+        self.ctrl_point_char.write_value(bytearray.fromhex("08 10"))
 
     def step_six(self):
-        pass
+        self.current_step = 6
+        # Send 'RECEIVE FIRMWARE IMAGE' command to set DFU in firmware receive state.
+        self.ctrl_point_char.write_value(bytearray.fromhex("03"))
 
-    
+    def step_seven(self):
+        pass
 
     def get_init_bin_array(self):
         # Open the DAT file and create array of its contents
