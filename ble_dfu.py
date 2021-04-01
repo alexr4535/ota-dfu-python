@@ -6,7 +6,7 @@ from util import *
 import math
 
 
-class AnyDeviceDFU(gatt.Device):
+class InfiniTimeDFU(gatt.Device):
     # Class constants
     UUID_DFU_SERVICE = "00001530-1212-efde-1523-785feabcd123"
     UUID_CTRL_POINT = "00001531-1212-efde-1523-785feabcd123"
@@ -67,7 +67,7 @@ class AnyDeviceDFU(gatt.Device):
     def characteristic_enable_notifications_succeeded(self, characteristic):
         if self.verbose and characteristic.uuid == self.UUID_CTRL_POINT:
             print("Notification Enable succeeded for Control Point Characteristic")
-            self.step_one()
+        self.step_one()
 
     def characteristic_write_value_succeeded(self, characteristic):
         if self.verbose:
@@ -113,7 +113,7 @@ class AnyDeviceDFU(gatt.Device):
 
         if array_to_hex_string(value)[0:2] == "11":
             self.packet_recipt_count += 1
-            print("receipt count", str(self.packet_recipt_count))
+            print("[INFO ] Packets recieved:", self.packet_recipt_count)
             if self.done != True:
                 self.i += self.pkt_payload_size
                 self.waiting = False
@@ -135,54 +135,54 @@ class AnyDeviceDFU(gatt.Device):
         )
 
         if self.verbose:
-            print("Enabling notifications for Control Point Characteristic")
+            print("[INFO ] Enabling notifications for Control Point Characteristic")
         self.ctrl_point_char.enable_notifications()
 
     def step_one(self):
         self.current_step = 1
         if self.verbose:
             print(
-                "Sending ('Start DFU' (0x01), 'Application' (0x04)) to DFU Control Point"
+                "[INFO ] Sending ('Start DFU' (0x01), 'Application' (0x04)) to DFU Control Point"
             )
         self.ctrl_point_char.write_value(bytearray.fromhex("01 04"))
 
     def step_two(self):
         self.current_step = 2
         if self.verbose:
-            print("Sending Image size to the DFU Packet characteristic")
+            print("[INFO ] Sending Image size to the DFU Packet characteristic")
         x = len(self.bin_array)
         hex_size_array_lsb = uint32_to_bytes_le(x)
         zero_pad_array_le(hex_size_array_lsb, 8)
         self.packet_char.write_value(bytearray(hex_size_array_lsb))
-        print("Waiting for Image Size notification")
+        print("[INFO ] Waiting for Image Size notification")
 
     def step_three(self):
         self.current_step = 3
         if self.verbose:
-            print("Sending 'INIT DFU' + Init Packet Command")
+            print("[INFO ] Sending 'INIT DFU' + Init Packet Command")
         self.ctrl_point_char.write_value(bytearray.fromhex("02 00"))
 
     def step_four(self):
         self.current_step = 4
         if self.verbose:
-            print("Sending the Init image (DAT)")
+            print("[INFO ] Sending the Init image (DAT)")
         self.packet_char.write_value(bytearray(self.get_init_bin_array()))
         if self.verbose:
-            print("Send 'INIT DFU' + Init Packet Complete Command")
+            print("[INFO ] Send 'INIT DFU' + Init Packet Complete Command")
         self.ctrl_point_char.write_value(bytearray.fromhex("02 01"))
-        print("Waiting for INIT DFU notification")
+        print("[INFO ] Waiting for INIT DFU notification")
 
     def step_five(self):
         self.current_step = 5
         if self.verbose:
-            print("Setting pkt receipt notification interval to 20")
+            print("[INFO ] Setting pkt receipt notification interval to 20")
         self.ctrl_point_char.write_value(bytearray.fromhex("08 20"))
 
     def step_six(self):
         self.current_step = 6
         if self.verbose:
             print(
-                "Send 'RECEIVE FIRMWARE IMAGE' command to set DFU in firmware receive state"
+                "[INFO ] Send 'RECEIVE FIRMWARE IMAGE' command to set DFU in firmware receive state"
             )
         self.segment_count = 0
         self.segment_total = int(
@@ -202,6 +202,7 @@ class AnyDeviceDFU(gatt.Device):
             self.sends += 1
             self.segment_count += 1
             if self.segment_count == self.segment_total:
+                print("[INFO ] All segments sent")
                 self.done = True
                 self.waiting = True
                 self.step_eight()
@@ -215,11 +216,11 @@ class AnyDeviceDFU(gatt.Device):
     def step_eight(self):
         self.current_step = 8
         self.ctrl_point_char.write_value(bytearray.fromhex("04"))
-        print("Waiting for DFU complete notification")
+        print("[INFO ] Waiting for DFU complete notification")
 
     def step_nine(self):
         self.current_step = 9
-        print("Activate and reset")
+        print("[INFO ] Activate and reset")
         self.ctrl_point_char.write_value(bytearray.fromhex("05"))
 
     def get_init_bin_array(self):
