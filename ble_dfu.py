@@ -6,7 +6,7 @@ from util import *
 import struct
 import datetime
 import time
-
+import math
 
 def get_current_time():
     now = datetime.datetime.now()
@@ -126,20 +126,6 @@ class InfiniTimeDFU(gatt.Device):
         if array_to_hex_string(value)[2:-2] == "03":
             self.step_seven()
 
-<<<<<<< HEAD:ble_dfu.py
-        if array_to_hex_string(value)[0:2] == "11":
-            self.packet_recipt_count += 1
-            print("[INFO ] Packets recieved:", self.packet_recipt_count)
-            if self.done != True:
-                self.i += self.pkt_payload_size
-                self.waiting = False
-                self.step_seven()
-
-        if array_to_hex_string(value)[2:-2] == "04":
-            self.step_nine()
-
-=======
->>>>>>> parent of 7cc10ca... add full ota functionality:py_gatt.py
     def services_resolved(self):
         super().services_resolved()
 
@@ -194,9 +180,8 @@ class InfiniTimeDFU(gatt.Device):
         self.current_step = 5
         # Set the Packet Receipt Notification interval to 10
         if self.verbose:
-<<<<<<< HEAD:ble_dfu.py
-            print("[INFO ] Setting pkt receipt notification interval to 20")
-        self.ctrl_point_char.write_value(bytearray.fromhex("08 20"))
+            print("Setting pkt receipt notification interval")
+        self.ctrl_point_char.write_value(bytearray.fromhex("08 10"))
 
     def step_six(self):
         self.current_step = 6
@@ -211,49 +196,7 @@ class InfiniTimeDFU(gatt.Device):
         self.ctrl_point_char.write_value(bytearray.fromhex("03"))
 
     def step_seven(self):
-        self.current_step = 7
-        # Send bin_array contents as as series of packets (burst mode).
-        # Each segment is pkt_payload_size bytes long.
-        # For every pkt_receipt_interval sends, wait for notification.
-        # i starts at 0
-        if self.waiting == False:
-            segment = self.bin_array[self.i : self.i + self.pkt_payload_size]
-            self.packet_char.write_value(segment)
-            self.sends += 1
-            self.segment_count += 1
-            if self.segment_count == self.segment_total:
-                print("[INFO ] All segments sent")
-                self.done = True
-                self.waiting = True
-                self.step_eight()
-            if self.sends != 40 and self.done != True:
-                self.i += self.pkt_payload_size
-                self.step_seven()
-            else:
-                self.sends = 0
-                self.waiting = True
-
-    def step_eight(self):
-        self.current_step = 8
-        self.ctrl_point_char.write_value(bytearray.fromhex("04"))
-        print("[INFO ] Waiting for DFU complete notification")
-
-    def step_nine(self):
-        self.current_step = 9
-        print("[INFO ] Activate and reset")
-        self.ctrl_point_char.write_value(bytearray.fromhex("05"))
-=======
-            print("Setting pkt receipt notification interval")
-        self.ctrl_point_char.write_value(bytearray.fromhex("08 10"))
-
-    def step_six(self):
-        self.current_step = 6
-        # Send 'RECEIVE FIRMWARE IMAGE' command to set DFU in firmware receive state.
-        self.ctrl_point_char.write_value(bytearray.fromhex("03"))
-
-    def step_seven(self):
         pass
->>>>>>> parent of 7cc10ca... add full ota functionality:py_gatt.py
 
     def get_init_bin_array(self):
         # Open the DAT file and create array of its contents
