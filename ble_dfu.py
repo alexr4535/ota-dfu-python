@@ -1,7 +1,6 @@
 from array import array
 import gatt
 import os
-from gi.repository import GObject, Gio, GLib
 from util import *
 import math
 
@@ -73,6 +72,10 @@ class InfiniTimeDFU(gatt.Device):
             print(
                 "Characteristic value was written successfully for Control Point Characteristic"
             )
+        if self.verbose and characteristic.uuid == self.UUID_PACKET:
+            print(
+                "Characteristic value was written successfully for Packet Characteristic"
+            )
         if self.current_step == 1:
             self.step_two()
 
@@ -86,11 +89,6 @@ class InfiniTimeDFU(gatt.Device):
             print("Begin DFU")
             self.step_seven()
 
-        if self.verbose and characteristic.uuid == self.UUID_PACKET:
-            print(
-                "Characteristic value was written successfully for Packet Characteristic"
-            )
-
     def characteristic_value_updated(self, characteristic, value):
         if self.verbose:
             if characteristic.uuid == self.UUID_CTRL_POINT:
@@ -99,7 +97,7 @@ class InfiniTimeDFU(gatt.Device):
                 )
             if characteristic.uuid == self.UUID_PACKET:
                 print("Characteristic value was updated for Packet Characteristic")
-        print("New value is:", value)
+            print("New value is:", value)
 
         if array_to_hex_string(value)[2:-2] == "01":
             self.step_three()
@@ -109,7 +107,7 @@ class InfiniTimeDFU(gatt.Device):
 
         if array_to_hex_string(value)[0:2] == "11":
             self.packet_recipt_count += 1
-            print("receipt count", str(self.packet_recipt_count))
+            print("[INFO ] receipt count", str(self.packet_recipt_count))
             if self.done != True:
                 self.i += self.pkt_payload_size
                 self.step_seven()
@@ -191,7 +189,6 @@ class InfiniTimeDFU(gatt.Device):
         # Send bin_array contents as as series of packets (burst mode).
         # Each segment is pkt_payload_size bytes long.
         # For every pkt_receipt_interval sends, wait for notification.
-        # i starts at 0
         segment = self.bin_array[self.i : self.i + self.pkt_payload_size]
         self.packet_char.write_value(segment)
         self.segment_count += 1
@@ -207,12 +204,12 @@ class InfiniTimeDFU(gatt.Device):
 
     def step_eight(self):
         self.current_step = 8
-        print("Sending Validate command")
+        print("[INFO ] Sending Validate command")
         self.ctrl_point_char.write_value(bytearray.fromhex("04"))
 
     def step_nine(self):
         self.current_step = 9
-        print("Activate and reset")
+        print("[INFO ] Activate and reset")
         self.ctrl_point_char.write_value(bytearray.fromhex("05"))
 
     def get_init_bin_array(self):
