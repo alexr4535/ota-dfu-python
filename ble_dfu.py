@@ -8,6 +8,7 @@ import datetime
 import time
 import math
 
+
 def get_current_time():
     now = datetime.datetime.now()
 
@@ -41,6 +42,11 @@ class InfiniTimeDFU(gatt.Device):
         self.target_mac = mac_address
         self.verbose = verbose
         self.current_step = 0
+        self.pkt_receipt_interval = 10
+        self.pkt_payload_size = 20
+        self.done = False
+        self.packet_recipt_count = 0
+
         super().__init__(mac_address, manager)
 
     def input_setup(self):
@@ -100,6 +106,7 @@ class InfiniTimeDFU(gatt.Device):
             self.step_six()
 
         if self.current_step == 6:
+            print("Begin DFU")
             self.step_seven()
 
         if self.verbose and characteristic.uuid == self.UUID_PACKET:
@@ -123,8 +130,15 @@ class InfiniTimeDFU(gatt.Device):
         if array_to_hex_string(value)[2:-2] == "02":
             self.step_five()
 
-        if array_to_hex_string(value)[2:-2] == "03":
-            self.step_seven()
+        if array_to_hex_string(value)[0:2] == "11":
+            self.packet_recipt_count += 1
+            print("receipt count", str(self.packet_recipt_count))
+            if self.done != True:
+                self.i += self.pkt_payload_size
+                self.step_seven()
+        
+        if array_to_hex_string(value)[2:-2] == "04":
+            self.step_nine()
 
     def services_resolved(self):
         super().services_resolved()
@@ -178,10 +192,9 @@ class InfiniTimeDFU(gatt.Device):
 
     def step_five(self):
         self.current_step = 5
-        # Set the Packet Receipt Notification interval to 10
         if self.verbose:
             print("Setting pkt receipt notification interval")
-        self.ctrl_point_char.write_value(bytearray.fromhex("08 10"))
+        self.ctrl_point_char.write_value(bytearray.fromhex("08 0A"))
 
     def step_six(self):
         self.current_step = 6
@@ -189,14 +202,41 @@ class InfiniTimeDFU(gatt.Device):
             print(
                 "[INFO ] Send 'RECEIVE FIRMWARE IMAGE' command to set DFU in firmware receive state"
             )
+        self.ctrl_point_char.write_value(bytearray.fromhex("03"))
         self.segment_count = 0
+        self.i = 0
         self.segment_total = int(
             math.ceil(self.image_size / float(self.pkt_payload_size))
         )
-        self.ctrl_point_char.write_value(bytearray.fromhex("03"))
 
     def step_seven(self):
-        pass
+        self.current_step = 7
+        # Send bin_array contents as as series of packets (burst mode).
+        # Each segment is pkt_payload_size bytes long.
+        # For every pkt_receipt_interval sends, wait for notification.
+        # i starts at 0
+        segment = self.bin_array[self.i : self.i + self.pkt_payload_size]
+        self.packet_char.write_value(segment)
+        self.segment_count += 1
+        if (self.segment_count == self.segment_total):
+            self.done = True
+            self.step_eight()
+        elif (self.segment_count % self.pkt_receipt_interval) != 0:
+            self.i += self.pkt_payload_size
+            self.step_seven()
+        else:
+            print("Waiting for Packet Reciept Notifiation...")
+        # else, wait for notification
+
+    def step_eight(self):
+        self.current_step = 8
+        print("Sending Validate command")
+        self.ctrl_point_char.write_value(bytearray.fromhex("04"))
+
+    def step_nine(self):
+        self.current_step = 9
+        print("Activate and reset")
+        self.ctrl_point_char.write_value(bytearray.fromhex("05"))
 
     def get_init_bin_array(self):
         # Open the DAT file and create array of its contents
