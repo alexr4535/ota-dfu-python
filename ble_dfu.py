@@ -1,6 +1,7 @@
 from array import array
 import gatt
 import os
+from gi.repository import GObject, Gio, GLib
 from util import *
 import math
 
