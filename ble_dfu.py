@@ -3,30 +3,7 @@ import gatt
 import os
 from gi.repository import GObject, Gio, GLib
 from util import *
-import struct
-import datetime
-import time
 import math
-
-
-def get_current_time():
-    now = datetime.datetime.now()
-
-    # https://www.bluetooth.com/wp-content/uploads/Sitecore-Media-Library/Gatt/Xml/Characteristics/org.bluetooth.characteristic.current_time.xml
-    return bytearray(
-        struct.pack(
-            "HBBBBBBBB",
-            now.year,
-            now.month,
-            now.day,
-            now.hour,
-            now.minute,
-            now.second,
-            now.weekday() + 1,  # numbered 1-7
-            int(now.microsecond / 1e6 * 256),  # 1/256th of a second
-            0b0001,  # adjust reason
-        )
-    )
 
 
 class InfiniTimeDFU(gatt.Device):
@@ -136,7 +113,7 @@ class InfiniTimeDFU(gatt.Device):
             if self.done != True:
                 self.i += self.pkt_payload_size
                 self.step_seven()
-        
+
         if array_to_hex_string(value)[2:-2] == "04":
             self.step_nine()
 
@@ -218,15 +195,15 @@ class InfiniTimeDFU(gatt.Device):
         segment = self.bin_array[self.i : self.i + self.pkt_payload_size]
         self.packet_char.write_value(segment)
         self.segment_count += 1
-        if (self.segment_count == self.segment_total):
+        if self.segment_count == self.segment_total:
             self.done = True
             self.step_eight()
         elif (self.segment_count % self.pkt_receipt_interval) != 0:
             self.i += self.pkt_payload_size
             self.step_seven()
         else:
-            print("Waiting for Packet Reciept Notifiation...")
-        # else, wait for notification
+            if self.verbose:
+                print("[INFO ] Waiting for Packet Reciept Notifiation")
 
     def step_eight(self):
         self.current_step = 8
@@ -242,39 +219,3 @@ class InfiniTimeDFU(gatt.Device):
         # Open the DAT file and create array of its contents
         init_bin_array = array("B", open(self.datfile_path, "rb").read())
         return init_bin_array
-
-
-class InfiniTimeManager(gatt.DeviceManager):
-    def __init__(self):
-        cmd = "btmgmt info"
-        btmgmt_proc = Gio.Subprocess.new(
-            cmd.split(),
-            Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE,
-        )
-        _, stdout, stderr = btmgmt_proc.communicate_utf8()
-        self.adapter_name = stdout.splitlines()[1].split(":")[0]
-        self.alias = None
-        self.scan_result = False
-        self.mac_address = None
-        super().__init__(self.adapter_name)
-
-    def get_scan_result(self):
-        return self.scan_result
-
-    def get_mac_address(self):
-        return self.mac_address
-
-    def set_timeout(self, timeout):
-        GObject.timeout_add(timeout, self.stop)
-
-    def device_discovered(self, device):
-        if device.alias() in ("InfiniTime", "Pinetime-JF"):
-            self.alias = device.alias()
-            self.scan_result = True
-            self.mac_address = device.mac_address
-            self.stop()
-
-    def scan_for_infinitime(self):
-        self.start_discovery()
-        self.set_timeout(5 * 1000)
-        self.run()
