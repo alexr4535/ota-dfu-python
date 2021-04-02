@@ -3,7 +3,29 @@ import gatt
 import os
 from gi.repository import GObject, Gio, GLib
 from util import *
-import math
+import struct
+import datetime
+import time
+
+
+def get_current_time():
+    now = datetime.datetime.now()
+
+    # https://www.bluetooth.com/wp-content/uploads/Sitecore-Media-Library/Gatt/Xml/Characteristics/org.bluetooth.characteristic.current_time.xml
+    return bytearray(
+        struct.pack(
+            "HBBBBBBBB",
+            now.year,
+            now.month,
+            now.day,
+            now.hour,
+            now.minute,
+            now.second,
+            now.weekday() + 1,  # numbered 1-7
+            int(now.microsecond / 1e6 * 256),  # 1/256th of a second
+            0b0001,  # adjust reason
+        )
+    )
 
 
 class InfiniTimeDFU(gatt.Device):
@@ -19,12 +41,6 @@ class InfiniTimeDFU(gatt.Device):
         self.target_mac = mac_address
         self.verbose = verbose
         self.current_step = 0
-        self.pkt_payload_size = 20
-        self.sends = 0
-        self.i = 0
-        self.waiting = False
-        self.done = False
-        self.packet_recipt_count = 0
         super().__init__(mac_address, manager)
 
     def input_setup(self):
@@ -70,16 +86,10 @@ class InfiniTimeDFU(gatt.Device):
         self.step_one()
 
     def characteristic_write_value_succeeded(self, characteristic):
-        if self.verbose:
-            if characteristic.uuid == self.UUID_CTRL_POINT:
-                print(
-                    "Characteristic value was written successfully for Control Point Characteristic"
-                )
-            if characteristic.uuid == self.UUID_PACKET and self.current_step != 7:
-                print(
-                    "Characteristic value was written successfully for Packet Characteristic"
-                )
-
+        if self.verbose and characteristic.uuid == self.UUID_CTRL_POINT:
+            print(
+                "Characteristic value was written successfully for Control Point Characteristic"
+            )
         if self.current_step == 1:
             self.step_two()
 
@@ -89,8 +99,13 @@ class InfiniTimeDFU(gatt.Device):
         if self.current_step == 5:
             self.step_six()
 
-        if self.current_step == 6 and self.done != True:
+        if self.current_step == 6:
             self.step_seven()
+
+        if self.verbose and characteristic.uuid == self.UUID_PACKET:
+            print(
+                "Characteristic value was written successfully for Packet Characteristic"
+            )
 
     def characteristic_value_updated(self, characteristic, value):
         if self.verbose:
@@ -100,7 +115,7 @@ class InfiniTimeDFU(gatt.Device):
                 )
             if characteristic.uuid == self.UUID_PACKET:
                 print("Characteristic value was updated for Packet Characteristic")
-            print("New value is:", value)
+        print("New value is:", value)
 
         if array_to_hex_string(value)[2:-2] == "01":
             self.step_three()
@@ -111,6 +126,7 @@ class InfiniTimeDFU(gatt.Device):
         if array_to_hex_string(value)[2:-2] == "03":
             self.step_seven()
 
+<<<<<<< HEAD:ble_dfu.py
         if array_to_hex_string(value)[0:2] == "11":
             self.packet_recipt_count += 1
             print("[INFO ] Packets recieved:", self.packet_recipt_count)
@@ -122,6 +138,8 @@ class InfiniTimeDFU(gatt.Device):
         if array_to_hex_string(value)[2:-2] == "04":
             self.step_nine()
 
+=======
+>>>>>>> parent of 7cc10ca... add full ota functionality:py_gatt.py
     def services_resolved(self):
         super().services_resolved()
 
@@ -174,7 +192,9 @@ class InfiniTimeDFU(gatt.Device):
 
     def step_five(self):
         self.current_step = 5
+        # Set the Packet Receipt Notification interval to 10
         if self.verbose:
+<<<<<<< HEAD:ble_dfu.py
             print("[INFO ] Setting pkt receipt notification interval to 20")
         self.ctrl_point_char.write_value(bytearray.fromhex("08 20"))
 
@@ -222,8 +242,56 @@ class InfiniTimeDFU(gatt.Device):
         self.current_step = 9
         print("[INFO ] Activate and reset")
         self.ctrl_point_char.write_value(bytearray.fromhex("05"))
+=======
+            print("Setting pkt receipt notification interval")
+        self.ctrl_point_char.write_value(bytearray.fromhex("08 10"))
+
+    def step_six(self):
+        self.current_step = 6
+        # Send 'RECEIVE FIRMWARE IMAGE' command to set DFU in firmware receive state.
+        self.ctrl_point_char.write_value(bytearray.fromhex("03"))
+
+    def step_seven(self):
+        pass
+>>>>>>> parent of 7cc10ca... add full ota functionality:py_gatt.py
 
     def get_init_bin_array(self):
         # Open the DAT file and create array of its contents
         init_bin_array = array("B", open(self.datfile_path, "rb").read())
         return init_bin_array
+
+
+class InfiniTimeManager(gatt.DeviceManager):
+    def __init__(self):
+        cmd = "btmgmt info"
+        btmgmt_proc = Gio.Subprocess.new(
+            cmd.split(),
+            Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE,
+        )
+        _, stdout, stderr = btmgmt_proc.communicate_utf8()
+        self.adapter_name = stdout.splitlines()[1].split(":")[0]
+        self.alias = None
+        self.scan_result = False
+        self.mac_address = None
+        super().__init__(self.adapter_name)
+
+    def get_scan_result(self):
+        return self.scan_result
+
+    def get_mac_address(self):
+        return self.mac_address
+
+    def set_timeout(self, timeout):
+        GObject.timeout_add(timeout, self.stop)
+
+    def device_discovered(self, device):
+        if device.alias() in ("InfiniTime", "Pinetime-JF"):
+            self.alias = device.alias()
+            self.scan_result = True
+            self.mac_address = device.mac_address
+            self.stop()
+
+    def scan_for_infinitime(self):
+        self.start_discovery()
+        self.set_timeout(5 * 1000)
+        self.run()
